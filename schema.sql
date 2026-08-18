@@ -4,7 +4,8 @@
 -- ------------------------------------------------------------
 CREATE TABLE account (
     user_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    uoft_email      VARCHAR(255) NOT NULL UNIQUE,           -- 1 email = 1 계정
+    uoft_email      VARCHAR(255) NOT NULL UNIQUE
+        CHECK (uoft_email LIKE '%@mail.utoronto.ca'),
     email_verified  BOOLEAN NOT NULL DEFAULT FALSE,
     password_hash   VARCHAR(255) NOT NULL,
     display_name    VARCHAR(100) NOT NULL,                  -- 실명 아니어도 됨
@@ -217,8 +218,10 @@ CREATE TABLE user_course_status (
     source                        VARCHAR(20) NOT NULL
         CHECK (source IN ('user_input', 'engine_calculated')),
     term_taken                    VARCHAR(20),                 -- 예: Winter 2026
-    grade                          VARCHAR(10),
-    is_visible                     BOOLEAN DEFAULT FALSE,       -- 멘토 프로필 공개 여부
+    grade                          INT
+        CHECK (grade >= 0 AND grade <= 100),
+    professor                      VARCHAR(150),
+    is_visible                     BOOLEAN DEFAULT TRUE,       -- 멘토 프로필 공개 여부
     missing_requirement_note       TEXT,                        -- Locked 상태 부족 요건 설명
     updated_at                     TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, course_code)                              -- 동일 과목 중복 등록 불가
@@ -299,6 +302,22 @@ CREATE TABLE data_source_map (
 );
 
 -- ------------------------------------------------------------
+-- 16. TranscriptUpload
+-- Transcript 업로드 원본 파일 및 파싱 상태 관리.
+-- ------------------------------------------------------------
+CREATE TABLE transcript_upload (
+    upload_id       BIGSERIAL PRIMARY KEY,
+    user_id         UUID NOT NULL
+        REFERENCES account(user_id) ON DELETE CASCADE,
+    file_url        VARCHAR(500) NOT NULL,                      -- 저장된 원본 파일 위치
+    parsed_status   VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (parsed_status IN ('pending', 'processing', 'success', 'failed')),
+    error_note      TEXT,                                        -- 파싱 실패 시 사유
+    uploaded_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+    parsed_at       TIMESTAMP                                    -- 파싱 완료 시각
+);
+
+-- ------------------------------------------------------------
 -- Indexes (조회 성능용 — 필요 시 조정)
 -- ------------------------------------------------------------
 CREATE INDEX idx_profile_gender ON profile(gender);
@@ -311,3 +330,4 @@ CREATE INDEX idx_request_requester ON request(requester_id);
 CREATE INDEX idx_request_mentor ON request(mentor_id);
 CREATE INDEX idx_event_log_user ON event_log(user_id);
 CREATE INDEX idx_event_log_type ON event_log(event_type);
+CREATE INDEX idx_transcript_upload_user ON transcript_upload(user_id);
