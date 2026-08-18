@@ -220,7 +220,6 @@ CREATE TABLE user_course_status (
     term_taken                    VARCHAR(20),                 -- 예: Winter 2026
     grade                          INT
         CHECK (grade >= 0 AND grade <= 100),
-    professor                      VARCHAR(150),
     is_visible                     BOOLEAN DEFAULT TRUE,       -- 멘토 프로필 공개 여부
     missing_requirement_note       TEXT,                        -- Locked 상태 부족 요건 설명
     updated_at                     TIMESTAMP NOT NULL DEFAULT NOW(),
