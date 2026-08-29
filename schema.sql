@@ -59,8 +59,7 @@ CREATE TABLE user_topic (
             'Program & Degree Requirements',
             'Study Tips & GPA Management',
             'First-year Adjustment',
-            'Clubs & Campus Life',
-            'Study Buddy'
+            'Clubs & Campus Life'
         )),
     UNIQUE (user_id, role, topic)
 );
@@ -111,20 +110,14 @@ CREATE TABLE course (
 -- 프로그램(POSt) 마스터 데이터.
 -- ------------------------------------------------------------
 CREATE TABLE program (
-    program_id                     VARCHAR(20) PRIMARY KEY,       -- POSt 코드, 예: ASMAJ1689
-    program_name                   VARCHAR(255) NOT NULL,
-    program_type                   VARCHAR(20) NOT NULL
+    program_id      VARCHAR(20) PRIMARY KEY,        -- 예: ASMAJ1689
+    program_name    VARCHAR(255) NOT NULL,
+    program_type    VARCHAR(20) NOT NULL
         CHECK (program_type IN ('Specialist', 'Major', 'Minor', 'Focus')),
-    campus                         VARCHAR(20) NOT NULL
+    campus          VARCHAR(20) NOT NULL
         CHECK (campus IN ('St.George', 'UTM', 'UTSC')),
-    is_limited_enrolment           BOOLEAN NOT NULL DEFAULT FALSE, -- "This is a limited enrolment program"
-    entry_requirement_text         TEXT,                           -- 원문 백업 (구조화된 내용의 검수/출처 대조용)
-    total_completion_credit        DECIMAL(4,1),                   -- 예: "8.0 credits"
-    completion_credit_note         TEXT,                           -- 예: "including at least one 0.5 credit at 400-level"
-    transfer_credit_max            DECIMAL(4,1),                   -- 전체 transfer credit 상한
-    transfer_credit_note           TEXT,                           -- level 제한, exchange 예외 등 세부 문구
-    source_url                     VARCHAR(500) NOT NULL,
-    last_reviewed                  DATE NOT NULL
+    source_url      VARCHAR(500) NOT NULL,
+    last_reviewed   DATE NOT NULL
 );
 
 -- ------------------------------------------------------------
@@ -149,42 +142,28 @@ CREATE TABLE program_exclusion (
         REFERENCES program(program_id) ON DELETE CASCADE,
     excluded_program_id   VARCHAR(20) NOT NULL
         REFERENCES program(program_id) ON DELETE CASCADE,
-    note                  TEXT,
     CHECK (program_id <> excluded_program_id),
     UNIQUE (program_id, excluded_program_id)
 );
 
 -- ------------------------------------------------------------
 -- 8. Requirement
--- 졸업/프로그램/입학(admission) 요건. self-referencing tree 구조 (parent-child).
+-- 졸업/프로그램 요건. self-referencing tree 구조 (parent-child).
 -- ------------------------------------------------------------
 CREATE TABLE requirement (
-    requirement_id             BIGSERIAL PRIMARY KEY,
-    level_type                  VARCHAR(20) NOT NULL
-        CHECK (level_type IN ('degree', 'program', 'admission')),
-    program_id                   VARCHAR(20)
-        REFERENCES program(program_id) ON DELETE CASCADE,     -- degree-level이면 NULL
-    parent_requirement_id        BIGINT
-        REFERENCES requirement(requirement_id) ON DELETE CASCADE,
-    requirement_number           VARCHAR(20),                    -- Degree Explorer Req 번호 (추적용)
-    description_text             TEXT NOT NULL,
-    logic_type                    VARCHAR(30) NOT NULL
-        CHECK (logic_type IN ('AND', 'OR', 'ALL_OF', 'AT_LEAST_N_CREDIT', 'AT_MOST_N_CREDIT')),
-    required_credit                DECIMAL(4,1),
-    min_credit                     DECIMAL(4,1),                 -- 그룹 내 최소 크레딧
-    max_credit                     DECIMAL(4,1),                 -- 그룹 내 최대 크레딧 (캡 제약, 예: "no more than 2.0 credits from Group B")
-    year_stage                     INT
-        CHECK (year_stage IN (1, 2, 3, 4)),
-    group_label                     VARCHAR(10),                  -- 예: A / B / C
-    -- 아래 두 컬럼은 level_type = 'admission'일 때만 사용 (pathway 적용 대상 구분)
-    applies_to_min_credit            DECIMAL(4,1),                -- 예: 이 pathway가 적용되는 기이수학점 하한
-    applies_to_max_credit            DECIMAL(4,1),                -- 예: 이 pathway가 적용되는 기이수학점 상한
-    supplementary_application_required BOOLEAN,                   -- admission pathway: 추가지원서 필요 여부
-    note                            TEXT,                          -- 각주/예외 설명 (구조화 어려운 잔여 텍스트)
-    is_leaf                         BOOLEAN NOT NULL DEFAULT TRUE, -- Program Progress 계산용
-    source_url                      VARCHAR(500) NOT NULL,
-    last_reviewed                    DATE NOT NULL,
-    CHECK (level_type = 'degree' OR program_id IS NOT NULL)
+    requirement_id         BIGSERIAL PRIMARY KEY,
+    program_id              VARCHAR(20)
+        REFERENCES program(program_id) ON DELETE CASCADE,   -- NULL이면 Degree 전체 요건 (예: ASPRGHBSC)
+    parent_requirement_id    BIGINT
+        REFERENCES requirement(requirement_id) ON DELETE CASCADE,  -- "in Req3" 같은 상위 요건 참조
+    requirement_number       VARCHAR(20) NOT NULL,              -- Req1, Req2 ...
+    description_text          TEXT NOT NULL,                     -- Degree Explorer 문구 그대로
+    logic_type                 VARCHAR(30) NOT NULL
+        CHECK (logic_type IN ('AND', 'OR', 'AT_LEAST_N_CREDIT', 'AT_MOST_N_CREDIT', 'MIN_CGPA')),
+    required_credit             DECIMAL(4,1),                     -- "At least 20.0 Credits"의 20.0
+    min_cgpa                     DECIMAL(3,2),                     -- "Minimum CGPA of 1.85"
+    course_group_code             VARCHAR(100),                    -- AS-UNIVCRS / AS-200+ / CSC_BCB_MAJ_SPEC 등
+    is_informational               BOOLEAN NOT NULL DEFAULT FALSE,  -- "Note" 타입 (진행률 계산 제외)
 );
 
 -- ------------------------------------------------------------
@@ -199,12 +178,10 @@ CREATE TABLE requirement_item (
         REFERENCES course(course_code) ON DELETE CASCADE,
     child_requirement_id        BIGINT
         REFERENCES requirement(requirement_id) ON DELETE CASCADE,
-    min_grade                    INT                              -- admission 요건 항목에만 사용 (예: CSC110Y1 70%). completion 요건은 NULL
-        CHECK (min_grade IS NULL OR (min_grade >= 0 AND min_grade <= 100)),
     CHECK (
         (course_code IS NOT NULL AND child_requirement_id IS NULL)
         OR (course_code IS NULL AND child_requirement_id IS NOT NULL)
-    )  -- course_code 또는 child_requirement_id 중 하나만
+    )
 );
 
 -- ------------------------------------------------------------
@@ -237,7 +214,7 @@ CREATE TABLE user_course_status (
             'Available', 'Locked', 'Excluded', 'Review Required'
         )),
     source                        VARCHAR(20) NOT NULL
-        CHECK (source IN ('user_input', 'engine_calculated')),
+        CHECK (source IN ('user_input', 'engine_calculated', 'transcript_import'))
     term_taken                    VARCHAR(20),                 -- 예: Winter 2026
     grade                          INT
         CHECK (grade >= 0 AND grade <= 100),
@@ -257,17 +234,24 @@ CREATE TABLE request (
         REFERENCES account(user_id) ON DELETE CASCADE,
     mentor_id            UUID NOT NULL
         REFERENCES account(user_id) ON DELETE CASCADE,
-    topic                  VARCHAR(50) NOT NULL,               -- mentor의 I Can Offer 중 선택
+    topic                  VARCHAR(50) NOT NULL               -- mentor의 I Can Offer 중 선택
+        CHECK (topic IN (
+            'Course Selection',
+            'Program & Degree Requirements',
+            'Study Tips & GPA Management',
+            'First-year Adjustment',
+            'Clubs & Campus Life'
+        )),
     related_course          VARCHAR(20) NOT NULL
         REFERENCES course(course_code),
     message                  TEXT NOT NULL,
     request_status             VARCHAR(20) NOT NULL DEFAULT 'Pending'
         CHECK (request_status IN ('Pending', 'Accepted', 'Declined')),
-    reply_message                TEXT,                          -- Accept 시 선택
-    contact_shared                 BIGINT[],                     -- 공개된 contact_id 배열
+    reply_message                TEXT,
+    contact_shared                 BIGINT[],
     created_at                     TIMESTAMP NOT NULL DEFAULT NOW(),
     responded_at                    TIMESTAMP,
-    CHECK (requester_id <> mentor_id)                          -- 자기 자신에게 요청 불가
+    CHECK (requester_id <> mentor_id)
 );
 
 -- 동일 (requester_id, mentor_id) 조합에 Pending 요청 중복 방지
@@ -325,16 +309,15 @@ CREATE TABLE data_source_map (
 -- 16. TranscriptUpload
 -- Transcript 업로드 원본 파일 및 파싱 상태 관리.
 -- ------------------------------------------------------------
-CREATE TABLE transcript_upload (
-    upload_id       BIGSERIAL PRIMARY KEY,
-    user_id         UUID NOT NULL
+CREATE TABLE transcript_import_log (
+    import_id           BIGSERIAL PRIMARY KEY,
+    user_id              UUID NOT NULL
         REFERENCES account(user_id) ON DELETE CASCADE,
-    file_url        VARCHAR(500) NOT NULL,                      -- 저장된 원본 파일 위치
-    parsed_status   VARCHAR(20) NOT NULL DEFAULT 'pending'
-        CHECK (parsed_status IN ('pending', 'processing', 'success', 'failed')),
-    error_note      TEXT,                                        -- 파싱 실패 시 사유
-    uploaded_at     TIMESTAMP NOT NULL DEFAULT NOW(),
-    parsed_at       TIMESTAMP                                    -- 파싱 완료 시각
+    import_status         VARCHAR(20) NOT NULL
+        CHECK (import_status IN ('success', 'partial_success', 'failed')),
+    courses_imported_count  INT NOT NULL DEFAULT 0,          -- 몇 개 과목이 정상 파싱됐는지
+    error_note               TEXT,                             -- 실패/부분실패 시 사유
+    created_at                TIMESTAMP NOT NULL DEFAULT NOW() 
 );
 
 -- ------------------------------------------------------------
