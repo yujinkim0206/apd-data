@@ -163,7 +163,7 @@ CREATE TABLE requirement (
     required_credit             DECIMAL(4,1),                     -- "At least 20.0 Credits"의 20.0
     min_cgpa                     DECIMAL(3,2),                     -- "Minimum CGPA of 1.85"
     course_group_code             VARCHAR(100),                    -- AS-UNIVCRS / AS-200+ / CSC_BCB_MAJ_SPEC 등
-    is_informational               BOOLEAN NOT NULL DEFAULT FALSE,  -- "Note" 타입 (진행률 계산 제외)
+    is_informational               BOOLEAN NOT NULL DEFAULT FALSE  -- "Note" 타입 (진행률 계산 제외)
 );
 
 -- ------------------------------------------------------------
@@ -214,7 +214,7 @@ CREATE TABLE user_course_status (
             'Available', 'Locked', 'Excluded', 'Review Required'
         )),
     source                        VARCHAR(20) NOT NULL
-        CHECK (source IN ('user_input', 'engine_calculated', 'transcript_import'))
+        CHECK (source IN ('user_input', 'engine_calculated', 'transcript_import')),
     term_taken                    VARCHAR(20),                 -- 예: Winter 2026
     grade                          INT
         CHECK (grade >= 0 AND grade <= 100),
@@ -334,4 +334,4 @@ CREATE INDEX idx_request_requester ON request(requester_id);
 CREATE INDEX idx_request_mentor ON request(mentor_id);
 CREATE INDEX idx_event_log_user ON event_log(user_id);
 CREATE INDEX idx_event_log_type ON event_log(event_type);
-CREATE INDEX idx_transcript_upload_user ON transcript_upload(user_id);
+CREATE INDEX idx_transcript_import_log_user ON transcript_import_log(user_id);
