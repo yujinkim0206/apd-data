@@ -111,16 +111,32 @@ CREATE TABLE course (
 -- 프로그램(POSt) 마스터 데이터.
 -- ------------------------------------------------------------
 CREATE TABLE program (
-    program_id                VARCHAR(20) PRIMARY KEY,       -- POSt 코드, 예: ASMAJ1689
-    program_name              VARCHAR(255) NOT NULL,
-    program_type              VARCHAR(20) NOT NULL
+    program_id                     VARCHAR(20) PRIMARY KEY,       -- POSt 코드, 예: ASMAJ1689
+    program_name                   VARCHAR(255) NOT NULL,
+    program_type                   VARCHAR(20) NOT NULL
         CHECK (program_type IN ('Specialist', 'Major', 'Minor', 'Focus')),
-    campus                    VARCHAR(20) NOT NULL
+    campus                         VARCHAR(20) NOT NULL
         CHECK (campus IN ('St.George', 'UTM', 'UTSC')),
-    entry_requirement_text    TEXT,
-    entry_requirement_rule    JSONB,                         -- admission category별 조건 (임시)
-    source_url                VARCHAR(500) NOT NULL,
-    last_reviewed              DATE NOT NULL
+    is_limited_enrolment           BOOLEAN NOT NULL DEFAULT FALSE, -- "This is a limited enrolment program"
+    entry_requirement_text         TEXT,                           -- 원문 백업 (구조화된 내용의 검수/출처 대조용)
+    total_completion_credit        DECIMAL(4,1),                   -- 예: "8.0 credits"
+    completion_credit_note         TEXT,                           -- 예: "including at least one 0.5 credit at 400-level"
+    transfer_credit_max            DECIMAL(4,1),                   -- 전체 transfer credit 상한
+    transfer_credit_note           TEXT,                           -- level 제한, exchange 예외 등 세부 문구
+    source_url                     VARCHAR(500) NOT NULL,
+    last_reviewed                  DATE NOT NULL
+);
+
+-- ------------------------------------------------------------
+-- 6b. ProgramArea
+-- Program Area Section 태그 (예: Computer Science, Data Science).
+-- ------------------------------------------------------------
+CREATE TABLE program_area (
+    id           BIGSERIAL PRIMARY KEY,
+    program_id   VARCHAR(20) NOT NULL
+        REFERENCES program(program_id) ON DELETE CASCADE,
+    area_name    VARCHAR(100) NOT NULL,                            -- 예: Computer Science, Data Science
+    UNIQUE (program_id, area_name)
 );
 
 -- ------------------------------------------------------------
@@ -140,31 +156,34 @@ CREATE TABLE program_exclusion (
 
 -- ------------------------------------------------------------
 -- 8. Requirement
--- 졸업/프로그램 요건. self-referencing tree 구조 (parent-child).
--- 이유: Req2: "At least 1 Requirement from Req3 or Req4 or Req5 or Req6 or Req7"
+-- 졸업/프로그램/입학(admission) 요건. self-referencing tree 구조 (parent-child).
 -- ------------------------------------------------------------
 CREATE TABLE requirement (
-    requirement_id          BIGSERIAL PRIMARY KEY,
-    level_type               VARCHAR(20) NOT NULL
-        CHECK (level_type IN ('degree', 'program')),
-    program_id                VARCHAR(20)
+    requirement_id             BIGSERIAL PRIMARY KEY,
+    level_type                  VARCHAR(20) NOT NULL
+        CHECK (level_type IN ('degree', 'program', 'admission')),
+    program_id                   VARCHAR(20)
         REFERENCES program(program_id) ON DELETE CASCADE,     -- degree-level이면 NULL
-    parent_requirement_id     BIGINT
+    parent_requirement_id        BIGINT
         REFERENCES requirement(requirement_id) ON DELETE CASCADE,
-    requirement_number        VARCHAR(20),                    -- Degree Explorer Req 번호 (추적용)
-    description_text          TEXT NOT NULL,
-    logic_type                 VARCHAR(30) NOT NULL
-        CHECK (logic_type IN ('AND', 'OR', 'ALL_OF', 'AT_LEAST_N_CREDIT')),
-    required_credit             DECIMAL(4,1),
-    min_credit                  DECIMAL(4,1),                 -- 그룹 내 최소 크레딧
-    max_credit                  DECIMAL(4,1),                 -- 그룹 내 최대 크레딧
-    year_stage                  INT
+    requirement_number           VARCHAR(20),                    -- Degree Explorer Req 번호 (추적용)
+    description_text             TEXT NOT NULL,
+    logic_type                    VARCHAR(30) NOT NULL
+        CHECK (logic_type IN ('AND', 'OR', 'ALL_OF', 'AT_LEAST_N_CREDIT', 'AT_MOST_N_CREDIT')),
+    required_credit                DECIMAL(4,1),
+    min_credit                     DECIMAL(4,1),                 -- 그룹 내 최소 크레딧
+    max_credit                     DECIMAL(4,1),                 -- 그룹 내 최대 크레딧 (캡 제약, 예: "no more than 2.0 credits from Group B")
+    year_stage                     INT
         CHECK (year_stage IN (1, 2, 3, 4)),
-    group_label                  VARCHAR(10),                  -- 예: A / B / C
-    note                         TEXT,                          -- 각주/예외 설명
-    is_leaf                      BOOLEAN NOT NULL DEFAULT TRUE, -- Program Progress 계산용
-    source_url                   VARCHAR(500) NOT NULL,
-    last_reviewed                 DATE NOT NULL,
+    group_label                     VARCHAR(10),                  -- 예: A / B / C
+    -- 아래 두 컬럼은 level_type = 'admission'일 때만 사용 (pathway 적용 대상 구분)
+    applies_to_min_credit            DECIMAL(4,1),                -- 예: 이 pathway가 적용되는 기이수학점 하한
+    applies_to_max_credit            DECIMAL(4,1),                -- 예: 이 pathway가 적용되는 기이수학점 상한
+    supplementary_application_required BOOLEAN,                   -- admission pathway: 추가지원서 필요 여부
+    note                            TEXT,                          -- 각주/예외 설명 (구조화 어려운 잔여 텍스트)
+    is_leaf                         BOOLEAN NOT NULL DEFAULT TRUE, -- Program Progress 계산용
+    source_url                      VARCHAR(500) NOT NULL,
+    last_reviewed                    DATE NOT NULL,
     CHECK (level_type = 'degree' OR program_id IS NOT NULL)
 );
 
@@ -180,6 +199,8 @@ CREATE TABLE requirement_item (
         REFERENCES course(course_code) ON DELETE CASCADE,
     child_requirement_id        BIGINT
         REFERENCES requirement(requirement_id) ON DELETE CASCADE,
+    min_grade                    INT                              -- admission 요건 항목에만 사용 (예: CSC110Y1 70%). completion 요건은 NULL
+        CHECK (min_grade IS NULL OR (min_grade >= 0 AND min_grade <= 100)),
     CHECK (
         (course_code IS NOT NULL AND child_requirement_id IS NULL)
         OR (course_code IS NULL AND child_requirement_id IS NOT NULL)
@@ -320,6 +341,7 @@ CREATE TABLE transcript_upload (
 -- Indexes (조회 성능용 — 필요 시 조정)
 -- ------------------------------------------------------------
 CREATE INDEX idx_profile_gender ON profile(gender);
+CREATE INDEX idx_program_area_program ON program_area(program_id);
 CREATE INDEX idx_requirement_program ON requirement(program_id);
 CREATE INDEX idx_requirement_parent ON requirement(parent_requirement_id);
 CREATE INDEX idx_requirement_item_requirement ON requirement_item(requirement_id);
