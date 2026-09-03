@@ -249,7 +249,7 @@ CREATE TABLE request (
 );
 
 -- ------------------------------------------------------------
--- 12b. RequestTopic
+-- 13. RequestTopic
 -- Request 전송 시 mentor의 I Can Offer 중 선택한 topic (다중선택 지원).
 -- ------------------------------------------------------------
 CREATE TABLE request_topic (
@@ -272,24 +272,6 @@ CREATE TABLE request_topic (
 -- 참고: Contact Sharing은 조회 시점에 
 -- request.request_status = 'Accepted' AND contact_method.is_shared_for_mentoring = TRUE
 -- 조건으로 mentor_id를 통해 join하여 동적으로 계산 (snapshot 저장 안 함 → 항상 최신 연락처 값 참조).
-
--- -- ------------------------------------------------------------
--- -- 13. FeedbackReport
--- -- Footer의 Feedback & Report 컴포넌트.
--- -- ------------------------------------------------------------
--- CREATE TABLE feedback_report (
---     feedback_id    BIGSERIAL PRIMARY KEY,
---     user_id         UUID
---         REFERENCES account(user_id) ON DELETE SET NULL,        -- 비로그인 제보 가능 시 NULL
---     type              VARCHAR(20) NOT NULL
---         CHECK (type IN ('bug', 'feedback', 'report')),
---     target_type        VARCHAR(50),                             -- course / program / mentor_profile 등
---     target_id            VARCHAR(50),
---     content                TEXT NOT NULL,
---     status                  VARCHAR(20) NOT NULL DEFAULT 'open'
---         CHECK (status IN ('open', 'in_review', 'resolved')),
---     created_at              TIMESTAMP NOT NULL DEFAULT NOW()
--- );
 
 -- ------------------------------------------------------------
 -- 14. EventLog
