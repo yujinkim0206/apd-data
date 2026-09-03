@@ -26,7 +26,8 @@ CREATE TABLE profile (
     campus                VARCHAR(20)
         CHECK (campus IN ('St.George', 'UTM', 'UTSC')),
     faculty                VARCHAR(50),
-    degree_structure        VARCHAR(50),
+    degree_structure        VARCHAR(20)
+        CHECK (degree_structure IN ('Specialist', 'Major', 'Minor')),
     year                    VARCHAR(5)
         CHECK (year IN ('1', '2', '3', '4', '4+')),
     gender                    VARCHAR(30)
