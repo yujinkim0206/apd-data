@@ -8,7 +8,8 @@ CREATE TABLE account (
         CHECK (uoft_email LIKE '%@mail.utoronto.ca'),
     email_verified  BOOLEAN NOT NULL DEFAULT FALSE,
     password_hash   VARCHAR(255) NOT NULL,
-    display_name    VARCHAR(100) NOT NULL,                  -- 실명 아니어도 됨
+    first_name      VARCHAR(50) NOT NULL,                    -- 실명
+    last_name       VARCHAR(50) NOT NULL,                    -- 실명
     created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
     account_status  VARCHAR(20) NOT NULL DEFAULT 'active'
         CHECK (account_status IN ('active', 'suspended', 'deleted'))
@@ -19,16 +20,20 @@ CREATE TABLE account (
 -- 기본 프로필 정보. Account와 1:1.
 -- ------------------------------------------------------------
 CREATE TABLE profile (
-    user_id          UUID PRIMARY KEY
+    user_id               UUID PRIMARY KEY
         REFERENCES account(user_id) ON DELETE CASCADE,
-    profile_picture  VARCHAR(500),                          -- 미등록 시 기본이미지
-    campus           VARCHAR(20)
+    profile_picture       VARCHAR(500),                      -- 미등록 시 기본이미지
+    campus                VARCHAR(20)
         CHECK (campus IN ('St.George', 'UTM', 'UTSC')),
-    year             INT
-        CHECK (year IN (1, 2, 3, 4)),                       -- 4 = 4+
-    gender           VARCHAR(30),
-    nationality      VARCHAR(100),
-    about            TEXT
+    faculty                VARCHAR(50),
+    degree_structure        VARCHAR(50),
+    year                    VARCHAR(5)
+        CHECK (year IN ('1', '2', '3', '4', '4+')),
+    gender                    VARCHAR(30)
+        CHECK (gender IN ('Male', 'Female', 'Non-binary', 'Self-describe', 'Prefer not to say')),
+    gender_self_describe        VARCHAR(30),                  -- gender = 'Self-describe'일 때만 사용
+    nationality                    VARCHAR(100),
+    about                             VARCHAR(500)
 );
 
 -- ------------------------------------------------------------
@@ -36,11 +41,11 @@ CREATE TABLE profile (
 -- 멘토링 참여 설정. Account와 1:1.
 -- ------------------------------------------------------------
 CREATE TABLE mentoring_preference (
-    user_id            UUID PRIMARY KEY
+    user_id                              UUID PRIMARY KEY
         REFERENCES account(user_id) ON DELETE CASCADE,
-    mentoring_opt_in   BOOLEAN NOT NULL DEFAULT FALSE,
-    availability       VARCHAR(20) NOT NULL DEFAULT 'Available'
-        CHECK (availability IN ('Available', 'Busy', 'Hidden'))
+    mentoring_opt_in                       BOOLEAN NOT NULL DEFAULT FALSE,   -- 멘토로 참여 및 검색 노출 여부
+    accepting_new_requests                   BOOLEAN NOT NULL DEFAULT TRUE,  -- 새 mentoring request 수신 여부
+    academic_history_mentoring_consent         BOOLEAN NOT NULL DEFAULT TRUE -- Completed Courses를 course 기반 매칭에 활용 동의 여부
 );
 
 -- ------------------------------------------------------------
@@ -69,12 +74,13 @@ CREATE TABLE user_topic (
 -- 사용자가 등록 가능한 연락 수단 (복수 등록 가능).
 -- ------------------------------------------------------------
 CREATE TABLE contact_method (
-    contact_id   BIGSERIAL PRIMARY KEY,
-    user_id      UUID NOT NULL
+    contact_id                BIGSERIAL PRIMARY KEY,
+    user_id                     UUID NOT NULL
         REFERENCES account(user_id) ON DELETE CASCADE,
-    method_type  VARCHAR(20) NOT NULL
+    method_type                   VARCHAR(20) NOT NULL
         CHECK (method_type IN ('Email', 'LinkedIn', 'KakaoTalk', 'Instagram', 'Other')),
-    value        VARCHAR(255) NOT NULL
+    value                           VARCHAR(255) NOT NULL,
+    is_shared_for_mentoring          BOOLEAN NOT NULL DEFAULT FALSE  -- Accepted 시 이 연락처를 공유할지 여부
 );
 
 -- ------------------------------------------------------------
@@ -208,17 +214,16 @@ CREATE TABLE user_course_status (
         REFERENCES account(user_id) ON DELETE CASCADE,
     course_code                 VARCHAR(20) NOT NULL
         REFERENCES course(course_code) ON DELETE CASCADE,
-    status                       VARCHAR(20) NOT NULL
-        CHECK (status IN (
-            'Completed', 'In Progress', 'Planned', 'Interested',
-            'Available', 'Locked', 'Excluded', 'Review Required'
-        )),
+    user_status                  VARCHAR(20) NOT NULL
+        CHECK (user_status IN ('Completed', 'In Progress', 'Planned', 'Interested')),
+    course_availability            VARCHAR(20)
+        CHECK (course_availability IN ('Available', 'Locked', 'Excluded', 'Review Required')),
     source                        VARCHAR(20) NOT NULL
         CHECK (source IN ('user_input', 'engine_calculated', 'transcript_import')),
     term_taken                    VARCHAR(20),                 -- 예: Winter 2026
     grade                          INT
         CHECK (grade >= 0 AND grade <= 100),
-    is_visible                     BOOLEAN DEFAULT TRUE,       -- 멘토 프로필 공개 여부
+    available_for_mentoring        BOOLEAN NOT NULL DEFAULT TRUE, -- 이 과목을 mentor matching에 노출할지 (Completed 기본 TRUE)
     missing_requirement_note       TEXT,                        -- Locked 상태 부족 요건 설명
     updated_at                     TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, course_code)                              -- 동일 과목 중복 등록 불가
@@ -234,7 +239,23 @@ CREATE TABLE request (
         REFERENCES account(user_id) ON DELETE CASCADE,
     mentor_id            UUID NOT NULL
         REFERENCES account(user_id) ON DELETE CASCADE,
-    topic                  VARCHAR(50) NOT NULL               -- mentor의 I Can Offer 중 선택
+    message                  VARCHAR(500),                     -- optional, max 500자
+    request_status             VARCHAR(20) NOT NULL DEFAULT 'Pending'
+        CHECK (request_status IN ('Pending', 'Accepted', 'Declined')),
+    created_at                     TIMESTAMP NOT NULL DEFAULT NOW(),
+    responded_at                    TIMESTAMP,
+    CHECK (requester_id <> mentor_id)
+);
+
+-- ------------------------------------------------------------
+-- 12b. RequestTopic
+-- Request 전송 시 mentor의 I Can Offer 중 선택한 topic (다중선택 지원).
+-- ------------------------------------------------------------
+CREATE TABLE request_topic (
+    id            BIGSERIAL PRIMARY KEY,
+    request_id      BIGINT NOT NULL
+        REFERENCES request(request_id) ON DELETE CASCADE,
+    topic             VARCHAR(50) NOT NULL
         CHECK (topic IN (
             'Course Selection',
             'Program & Degree Requirements',
@@ -242,22 +263,14 @@ CREATE TABLE request (
             'First-year Adjustment',
             'Clubs & Campus Life'
         )),
-    related_course          VARCHAR(20) NOT NULL
-        REFERENCES course(course_code),
-    message                  TEXT NOT NULL,
-    request_status             VARCHAR(20) NOT NULL DEFAULT 'Pending'
-        CHECK (request_status IN ('Pending', 'Accepted', 'Declined')),
-    reply_message                TEXT,
-    contact_shared                 BIGINT[],
-    created_at                     TIMESTAMP NOT NULL DEFAULT NOW(),
-    responded_at                    TIMESTAMP,
-    CHECK (requester_id <> mentor_id)
+    UNIQUE (request_id, topic)
 );
 
--- 동일 (requester_id, mentor_id) 조합에 Pending 요청 중복 방지
-CREATE UNIQUE INDEX uq_request_pending
-    ON request (requester_id, mentor_id)
-    WHERE request_status = 'Pending';
+-- 참고: 동일 (requester_id, mentor_id) 조합에 대한 Pending 요청 중복 허용
+
+-- 참고: Contact Sharing은 조회 시점에 
+-- request.request_status = 'Accepted' AND contact_method.is_shared_for_mentoring = TRUE
+-- 조건으로 mentor_id를 통해 join하여 동적으로 계산 (snapshot 저장 안 함 → 항상 최신 연락처 값 참조).
 
 -- -- ------------------------------------------------------------
 -- -- 13. FeedbackReport
@@ -279,13 +292,13 @@ CREATE UNIQUE INDEX uq_request_pending
 
 -- ------------------------------------------------------------
 -- 14. EventLog
--- WADU / Activation / Return Visit Rate 계산용 행동 로그.
+-- Success Criteria 문서의 핵심 성공 지표 계산용 이벤트 로그.
 -- ------------------------------------------------------------
 CREATE TABLE event_log (
     event_id     BIGSERIAL PRIMARY KEY,
     user_id       UUID NOT NULL
         REFERENCES account(user_id) ON DELETE CASCADE,
-    event_type     VARCHAR(50) NOT NULL,                        -- login / degree_path_view / mentor_search 등
+    event_type     VARCHAR(50) NOT NULL,                        -- signup_completed / degree_path_viewed / mentor_search 등 (Success Criteria 10번 참고)
     metadata          JSONB,
     created_at          TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -306,21 +319,6 @@ CREATE TABLE data_source_map (
 );
 
 -- ------------------------------------------------------------
--- 16. TranscriptUpload
--- Transcript 업로드 원본 파일 및 파싱 상태 관리.
--- ------------------------------------------------------------
-CREATE TABLE transcript_import_log (
-    import_id           BIGSERIAL PRIMARY KEY,
-    user_id              UUID NOT NULL
-        REFERENCES account(user_id) ON DELETE CASCADE,
-    import_status         VARCHAR(20) NOT NULL
-        CHECK (import_status IN ('success', 'partial_success', 'failed')),
-    courses_imported_count  INT NOT NULL DEFAULT 0,          -- 몇 개 과목이 정상 파싱됐는지
-    error_note               TEXT,                             -- 실패/부분실패 시 사유
-    created_at                TIMESTAMP NOT NULL DEFAULT NOW() 
-);
-
--- ------------------------------------------------------------
 -- Indexes (조회 성능용 — 필요 시 조정)
 -- ------------------------------------------------------------
 CREATE INDEX idx_profile_gender ON profile(gender);
@@ -332,6 +330,7 @@ CREATE INDEX idx_user_course_status_user ON user_course_status(user_id);
 CREATE INDEX idx_user_program_user ON user_program(user_id);
 CREATE INDEX idx_request_requester ON request(requester_id);
 CREATE INDEX idx_request_mentor ON request(mentor_id);
+CREATE INDEX idx_request_topic_request ON request_topic(request_id);
+CREATE INDEX idx_contact_method_user ON contact_method(user_id);
 CREATE INDEX idx_event_log_user ON event_log(user_id);
 CREATE INDEX idx_event_log_type ON event_log(event_type);
-CREATE INDEX idx_transcript_import_log_user ON transcript_import_log(user_id);
