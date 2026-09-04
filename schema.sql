@@ -50,7 +50,7 @@ CREATE TABLE mentoring_preference (
 );
 
 -- ------------------------------------------------------------
--- 3b. UserTopic
+-- 4. UserTopic
 -- I Can Offer / I'm Looking For 다중선택 junction table.
 -- ------------------------------------------------------------
 CREATE TABLE user_topic (
@@ -71,7 +71,7 @@ CREATE TABLE user_topic (
 );
 
 -- ------------------------------------------------------------
--- 4. ContactMethod
+-- 5. ContactMethod
 -- 사용자가 등록 가능한 연락 수단 (복수 등록 가능).
 -- ------------------------------------------------------------
 CREATE TABLE contact_method (
@@ -85,7 +85,7 @@ CREATE TABLE contact_method (
 );
 
 -- ------------------------------------------------------------
--- 5. Course
+-- 6. Course
 -- 과목 마스터 데이터.
 -- ------------------------------------------------------------
 CREATE TABLE course (
@@ -113,7 +113,7 @@ CREATE TABLE course (
 );
 
 -- ------------------------------------------------------------
--- 6. Program
+-- 7. Program
 -- 프로그램(POSt) 마스터 데이터.
 -- ------------------------------------------------------------
 CREATE TABLE program (
@@ -128,7 +128,7 @@ CREATE TABLE program (
 );
 
 -- ------------------------------------------------------------
--- 6b. ProgramArea
+-- 8. ProgramArea
 -- Program Area Section 태그 (예: Computer Science, Data Science).
 -- ------------------------------------------------------------
 CREATE TABLE program_area (
@@ -140,7 +140,7 @@ CREATE TABLE program_area (
 );
 
 -- ------------------------------------------------------------
--- 7. ProgramExclusion
+-- 9. ProgramExclusion
 -- 프로그램 간 동시 이수 불가 규칙.
 -- ------------------------------------------------------------
 CREATE TABLE program_exclusion (
@@ -154,7 +154,7 @@ CREATE TABLE program_exclusion (
 );
 
 -- ------------------------------------------------------------
--- 8. Requirement
+-- 10. Requirement
 -- 졸업/프로그램 요건. self-referencing tree 구조 (parent-child).
 -- ------------------------------------------------------------
 CREATE TABLE requirement (
@@ -174,7 +174,7 @@ CREATE TABLE requirement (
 );
 
 -- ------------------------------------------------------------
--- 9. RequirementItem
+-- 11. RequirementItem
 -- Requirement를 구성하는 개별 과목 또는 하위 요건 참조.
 -- ------------------------------------------------------------
 CREATE TABLE requirement_item (
@@ -192,7 +192,7 @@ CREATE TABLE requirement_item (
 );
 
 -- ------------------------------------------------------------
--- 10. UserProgram
+-- 12. UserProgram
 -- 사용자가 선택한 프로그램. Double Major 지원.
 -- ------------------------------------------------------------
 CREATE TABLE user_program (
@@ -206,7 +206,7 @@ CREATE TABLE user_program (
 );
 
 -- ------------------------------------------------------------
--- 11. UserCourseStatus
+-- 13. UserCourseStatus
 -- Academic History + Degree Path Plan + 엔진계산 결과 통합.
 -- ------------------------------------------------------------
 CREATE TABLE user_course_status (
@@ -231,7 +231,7 @@ CREATE TABLE user_course_status (
 );
 
 -- ------------------------------------------------------------
--- 12. Request
+-- 14. Request
 -- 멘토링 연결 요청.
 -- ------------------------------------------------------------
 CREATE TABLE request (
@@ -249,7 +249,7 @@ CREATE TABLE request (
 );
 
 -- ------------------------------------------------------------
--- 13. RequestTopic
+-- 15. RequestTopic
 -- Request 전송 시 mentor의 I Can Offer 중 선택한 topic (다중선택 지원).
 -- ------------------------------------------------------------
 CREATE TABLE request_topic (
@@ -274,7 +274,7 @@ CREATE TABLE request_topic (
 -- 조건으로 mentor_id를 통해 join하여 동적으로 계산 (snapshot 저장 안 함 → 항상 최신 연락처 값 참조).
 
 -- ------------------------------------------------------------
--- 14. EventLog
+-- 16. EventLog
 -- Success Criteria 문서의 핵심 성공 지표 계산용 이벤트 로그.
 -- ------------------------------------------------------------
 CREATE TABLE event_log (
@@ -284,21 +284,6 @@ CREATE TABLE event_log (
     event_type     VARCHAR(50) NOT NULL,                        -- signup_completed / degree_path_viewed / mentor_search 등 (Success Criteria 10번 참고)
     metadata          JSONB,
     created_at          TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- ------------------------------------------------------------
--- 15. DataSourceMap
--- 공식 출처 URL / 파싱 방식 / 갱신 주기 관리.
--- ------------------------------------------------------------
-CREATE TABLE data_source_map (
-    id               BIGSERIAL PRIMARY KEY,
-    entity_name        VARCHAR(50) NOT NULL,                     -- Course / Program / Requirement
-    attribute_name       VARCHAR(50) NOT NULL,
-    source_url             VARCHAR(500) NOT NULL,
-    access_method             VARCHAR(20) NOT NULL
-        CHECK (access_method IN ('automated', 'manual')),
-    update_cycle                VARCHAR(20) NOT NULL,             -- 예: 1년
-    UNIQUE (entity_name, attribute_name)
 );
 
 -- ------------------------------------------------------------
