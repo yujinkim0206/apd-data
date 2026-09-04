@@ -1,0 +1,273 @@
+Table "account" {
+  "user_id" UUID [pk, default: `gen_random_uuid()`]
+  "uoft_email" VARCHAR(255) [unique, not null, check: `uoft_email LIKE '%@mail.utoronto.ca'`]
+  "email_verified" BOOLEAN [not null, default: FALSE]
+  "password_hash" VARCHAR(255) [not null]
+  "first_name" VARCHAR(50) [not null]
+  "last_name" VARCHAR(50) [not null]
+  "created_at" TIMESTAMP [not null, default: `NOW()`]
+  "account_status" VARCHAR(20) [not null, check: `account_status IN ('active', 'suspended', 'deleted')`, default: 'active']
+}
+
+Table "profile" {
+  "user_id" UUID [pk]
+  "profile_picture" VARCHAR(500)
+  "campus" VARCHAR(20) [check: `campus IN ('St.George', 'UTM', 'UTSC')`]
+  "faculty" VARCHAR(50)
+  "degree_structure" VARCHAR(20) [check: `degree_structure IN ('Specialist', 'Major', 'Minor')`]
+  "year" VARCHAR(5) [check: `year IN ('1', '2', '3', '4', '4+')`]
+  "gender" VARCHAR(30) [check: `gender IN ('Male', 'Female', 'Non-binary', 'Self-describe', 'Prefer not to say')`]
+  "gender_self_describe" VARCHAR(30)
+  "nationality" VARCHAR(100)
+  "about" VARCHAR(500)
+
+  Indexes {
+    gender [name: "idx_profile_gender"]
+  }
+}
+
+Table "mentoring_preference" {
+  "user_id" UUID [pk]
+  "mentoring_opt_in" BOOLEAN [not null, default: FALSE]
+  "accepting_new_requests" BOOLEAN [not null, default: TRUE]
+  "academic_history_mentoring_consent" BOOLEAN [not null, default: TRUE]
+}
+
+Table "user_topic" {
+  "topic_id" BIGSERIAL [pk, increment]
+  "user_id" UUID [not null]
+  "role" VARCHAR(20) [not null, check: `role IN ('offer', 'looking_for')`]
+  "topic" VARCHAR(50) [not null, check: `topic IN (
+            'Course Selection',
+            'Program & Degree Requirements',
+            'Study Tips & GPA Management',
+            'First-year Adjustment',
+            'Clubs & Campus Life'
+        )`]
+
+  Indexes {
+    (user_id, role, topic) [unique]
+  }
+}
+
+Table "contact_method" {
+  "contact_id" BIGSERIAL [pk, increment]
+  "user_id" UUID [not null]
+  "method_type" VARCHAR(20) [not null, check: `method_type IN ('Email', 'LinkedIn', 'KakaoTalk', 'Instagram', 'Other')`]
+  "value" VARCHAR(255) [not null]
+  "is_shared_for_mentoring" BOOLEAN [not null, default: FALSE]
+
+  Indexes {
+    user_id [name: "idx_contact_method_user"]
+  }
+}
+
+Table "course" {
+  "course_code" VARCHAR(20) [pk]
+  "course_name" VARCHAR(255) [not null]
+  "description" TEXT [not null]
+  "prerequisite_text" TEXT
+  "prerequisite_rule" JSONB
+  "corequisite_text" TEXT
+  "corequisite_rule" JSONB
+  "recommended_preparation" TEXT
+  "exclusion_text" TEXT
+  "exclusion_rule" JSONB
+  "exclusion_note" TEXT
+  "enrolment_restriction" TEXT
+  "campus" VARCHAR(20) [not null, check: `campus IN ('St.George', 'UTM', 'UTSC')`]
+  "course_level" INT [not null]
+  "credit_value" DECIMAL(3,1) [not null]
+  "breadth_requirement" VARCHAR(255)
+  "term_offered" VARCHAR(10) [check: `term_offered IN ('F', 'S', 'Y')`]
+  "source_url" VARCHAR(500) [not null]
+  "last_reviewed" DATE [not null]
+}
+
+Table "program" {
+  "program_id" VARCHAR(20) [pk]
+  "program_name" VARCHAR(255) [not null]
+  "program_type" VARCHAR(20) [not null, check: `program_type IN ('Specialist', 'Major', 'Minor', 'Focus')`]
+  "campus" VARCHAR(20) [not null, check: `campus IN ('St.George', 'UTM', 'UTSC')`]
+  "source_url" VARCHAR(500) [not null]
+  "last_reviewed" DATE [not null]
+}
+
+Table "program_area" {
+  "id" BIGSERIAL [pk, increment]
+  "program_id" VARCHAR(20) [not null]
+  "area_name" VARCHAR(100) [not null]
+
+  Indexes {
+    (program_id, area_name) [unique]
+    program_id [name: "idx_program_area_program"]
+  }
+}
+
+Table "program_exclusion" {
+  "id" BIGSERIAL [pk, increment]
+  "program_id" VARCHAR(20) [not null]
+  "excluded_program_id" VARCHAR(20) [not null]
+
+  Checks {
+    `program_id <> excluded_program_id`
+  }
+
+  Indexes {
+    (program_id, excluded_program_id) [unique]
+  }
+}
+
+Table "requirement" {
+  "requirement_id" BIGSERIAL [pk, increment]
+  "program_id" VARCHAR(20)
+  "parent_requirement_id" BIGINT
+  "requirement_number" VARCHAR(20) [not null]
+  "description_text" TEXT [not null]
+  "logic_type" VARCHAR(30) [not null, check: `logic_type IN ('AND', 'OR', 'AT_LEAST_N_CREDIT', 'AT_MOST_N_CREDIT', 'MIN_CGPA')`]
+  "required_credit" DECIMAL(4,1)
+  "min_cgpa" DECIMAL(3,2)
+  "course_group_code" VARCHAR(100)
+  "is_informational" BOOLEAN [not null, default: FALSE]
+
+  Indexes {
+    program_id [name: "idx_requirement_program"]
+    parent_requirement_id [name: "idx_requirement_parent"]
+  }
+}
+
+Table "requirement_item" {
+  "id" BIGSERIAL [pk, increment]
+  "requirement_id" BIGINT [not null]
+  "course_code" VARCHAR(20)
+  "child_requirement_id" BIGINT
+
+  Checks {
+    `(course_code IS NOT NULL AND child_requirement_id IS NULL)
+        OR (course_code IS NULL AND child_requirement_id IS NOT NULL)`
+  }
+
+  Indexes {
+    requirement_id [name: "idx_requirement_item_requirement"]
+  }
+}
+
+Table "user_program" {
+  "id" BIGSERIAL [pk, increment]
+  "user_id" UUID [not null]
+  "program_id" VARCHAR(20) [not null]
+  "opted_at" TIMESTAMP [not null, default: `NOW()`]
+
+  Indexes {
+    (user_id, program_id) [unique]
+    user_id [name: "idx_user_program_user"]
+  }
+}
+
+Table "user_course_status" {
+  "id" BIGSERIAL [pk, increment]
+  "user_id" UUID [not null]
+  "course_code" VARCHAR(20) [not null]
+  "user_status" VARCHAR(20) [not null, check: `user_status IN ('Completed', 'In Progress', 'Planned', 'Interested')`]
+  "course_availability" VARCHAR(20) [check: `course_availability IN ('Available', 'Locked', 'Excluded', 'Review Required')`]
+  "source" VARCHAR(20) [not null, check: `source IN ('user_input', 'engine_calculated', 'transcript_import')`]
+  "term_taken" VARCHAR(20)
+  "grade" INT [check: `grade >= 0 AND grade <= 100`]
+  "available_for_mentoring" BOOLEAN [not null, default: TRUE]
+  "missing_requirement_note" TEXT
+  "updated_at" TIMESTAMP [not null, default: `NOW()`]
+
+  Indexes {
+    (user_id, course_code) [unique]
+    user_id [name: "idx_user_course_status_user"]
+  }
+}
+
+Table "request" {
+  "request_id" BIGSERIAL [pk, increment]
+  "requester_id" UUID [not null]
+  "mentor_id" UUID [not null]
+  "message" VARCHAR(500)
+  "request_status" VARCHAR(20) [not null, check: `request_status IN ('Pending', 'Accepted', 'Declined')`, default: 'Pending']
+  "created_at" TIMESTAMP [not null, default: `NOW()`]
+  "responded_at" TIMESTAMP
+
+  Checks {
+    `requester_id <> mentor_id`
+  }
+
+  Indexes {
+    requester_id [name: "idx_request_requester"]
+    mentor_id [name: "idx_request_mentor"]
+  }
+}
+
+Table "request_topic" {
+  "id" BIGSERIAL [pk, increment]
+  "request_id" BIGINT [not null]
+  "topic" VARCHAR(50) [not null, check: `topic IN (
+            'Course Selection',
+            'Program & Degree Requirements',
+            'Study Tips & GPA Management',
+            'First-year Adjustment',
+            'Clubs & Campus Life'
+        )`]
+
+  Indexes {
+    (request_id, topic) [unique]
+    request_id [name: "idx_request_topic_request"]
+  }
+}
+
+Table "event_log" {
+  "event_id" BIGSERIAL [pk, increment]
+  "user_id" UUID [not null]
+  "event_type" VARCHAR(50) [not null]
+  "metadata" JSONB
+  "created_at" TIMESTAMP [not null, default: `NOW()`]
+
+  Indexes {
+    user_id [name: "idx_event_log_user"]
+    event_type [name: "idx_event_log_type"]
+  }
+}
+
+Ref:"account"."user_id" < "profile"."user_id" [delete: cascade]
+
+Ref:"account"."user_id" < "mentoring_preference"."user_id" [delete: cascade]
+
+Ref:"account"."user_id" < "user_topic"."user_id" [delete: cascade]
+
+Ref:"account"."user_id" < "contact_method"."user_id" [delete: cascade]
+
+Ref:"program"."program_id" < "program_area"."program_id" [delete: cascade]
+
+Ref:"program"."program_id" < "program_exclusion"."program_id" [delete: cascade]
+
+Ref:"program"."program_id" < "program_exclusion"."excluded_program_id" [delete: cascade]
+
+Ref:"program"."program_id" < "requirement"."program_id" [delete: cascade]
+
+Ref:"requirement"."requirement_id" < "requirement"."parent_requirement_id" [delete: cascade]
+
+Ref:"requirement"."requirement_id" < "requirement_item"."requirement_id" [delete: cascade]
+
+Ref:"course"."course_code" < "requirement_item"."course_code" [delete: cascade]
+
+Ref:"requirement"."requirement_id" < "requirement_item"."child_requirement_id" [delete: cascade]
+
+Ref:"account"."user_id" < "user_program"."user_id" [delete: cascade]
+
+Ref:"program"."program_id" < "user_program"."program_id" [delete: cascade]
+
+Ref:"account"."user_id" < "user_course_status"."user_id" [delete: cascade]
+
+Ref:"course"."course_code" < "user_course_status"."course_code" [delete: cascade]
+
+Ref:"account"."user_id" < "request"."requester_id" [delete: cascade]
+
+Ref:"account"."user_id" < "request"."mentor_id" [delete: cascade]
+
+Ref:"request"."request_id" < "request_topic"."request_id" [delete: cascade]
+
+Ref:"account"."user_id" < "event_log"."user_id" [delete: cascade]
